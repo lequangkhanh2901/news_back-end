@@ -36,6 +36,7 @@ const addCategory = async (req, res) => {
         message: 'internal error',
       })
     }
+    global.io.emit('UPDATE_CATEGORY')
     return res.json({ code: 201, message: 'ok' })
   } catch (error) {
     return res.json({
@@ -57,6 +58,8 @@ const deleteCategory = async (req, res) => {
     }
     const response = await Category.delete(id)
     if (response != 'fail') {
+      global.io.emit('UPDATE_CATEGORY')
+
       return res.json({
         code: 200,
         message: 'deleted',
@@ -83,8 +86,14 @@ const updateCategory = async (req, res) => {
         message: 'missing param',
       })
     }
-    const response = await Category.update({ id, name, status, idParentCategory })
+    const response = await Category.update({
+      id,
+      name,
+      status,
+      idParentCategory,
+    })
     if (response != 'fail') {
+      global.io.emit('UPDATE_CATEGORY')
       return res.json({
         code: 202,
         message: 'updated',
@@ -150,4 +159,11 @@ const forceDeleteCategory = async (req, res) => {
     })
   }
 }
-module.exports = { getListCategory, addCategory, deleteCategory, updateCategory, trashCategory, forceDeleteCategory }
+module.exports = {
+  getListCategory,
+  addCategory,
+  deleteCategory,
+  updateCategory,
+  trashCategory,
+  forceDeleteCategory,
+}

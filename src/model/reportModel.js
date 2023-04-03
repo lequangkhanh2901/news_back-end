@@ -35,6 +35,20 @@ const Report = {
       qb.release()
     }
   },
+  async isReportedComment(idUser, idComment) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb
+        .where({ id_comment: idComment, id_user: idUser })
+        .get(table)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
 }
 
 module.exports = Report

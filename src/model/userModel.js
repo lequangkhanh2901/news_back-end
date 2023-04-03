@@ -111,6 +111,59 @@ const User = {
       qb.release()
     }
   },
+  async get(idUser) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.where('id', idUser).get(table)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async changePassword(idUser, newPass) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.update(
+        table,
+        {
+          password: newPass,
+        },
+        {
+          id: idUser,
+        }
+      )
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async changeRole(id, role) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.update(
+        table,
+        {
+          role: role,
+        },
+        {
+          id: id,
+        }
+      )
+      console.log(response)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
 }
 
 module.exports = User

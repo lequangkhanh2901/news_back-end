@@ -4,7 +4,6 @@ const LikeComment = require('../model/likeCommentModel')
 
 const addComment = async (req, res) => {
   try {
-    console.log(req.body)
     const { idPost, comment, idParentComment } = req.body
     if (!idPost || !comment) {
       return res.json({ code: 400, message: 'missing params' })
@@ -17,6 +16,9 @@ const addComment = async (req, res) => {
     )
     const response = await Comment.add(id, idPost, idParentComment, comment)
     if (response !== 'fail') {
+      global.io.emit(idPost, {
+        type: 'UPDATE_COMMENT',
+      })
       return res.json({
         code: 201,
         message: 'ok',
@@ -59,6 +61,7 @@ const getListComment = async (req, res) => {
 const likeComment = async (req, res) => {
   try {
     const idComment = req.body.id
+    const idPost = req.body.idPost
     if (!idComment) {
       return res.json({
         code: 400,
@@ -80,6 +83,9 @@ const likeComment = async (req, res) => {
           message: 'error',
         })
       }
+      global.io.emit(idPost, {
+        type: 'UPDATE_COMMENT',
+      })
       return res.json({
         code: 201,
         message: 'liked',
@@ -92,16 +98,53 @@ const likeComment = async (req, res) => {
         message: 'error',
       })
     }
+    global.io.emit(idPost, {
+      type: 'UPDATE_COMMENT',
+    })
     return res.json({
       code: 200,
       message: 'unliked',
     })
   } catch (error) {
-    console.log('loi con', error)
     return res.json({
       code: 500,
       message: 'error',
     })
   }
 }
-module.exports = { addComment, getListComment, likeComment }
+const deleteComment = async (req, res) => {
+  try {
+    const idComment = req.body.id
+    const idPost = req.body.idPost
+    if (!idComment) {
+      return res.json({ code: 400, message: 'missing params' })
+    }
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
+    const response = await Comment.delete(idUser, idComment)
+    if (response === 'fail') {
+      return res.json({
+        code: 500,
+        message: 'error',
+      })
+    }
+    global.io.emit(idPost, {
+      type: 'UPDATE_COMMENT',
+    })
+    return res.json({
+      code: 202,
+      message: 'deleted',
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+module.exports = { addComment, getListComment, likeComment, deleteComment }

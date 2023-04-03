@@ -30,7 +30,6 @@ const Comment = {
       )
       return response
     } catch (error) {
-      console.log(error)
       return 'fail'
     } finally {
       qb.release()
@@ -45,7 +44,22 @@ const Comment = {
       )
       return response
     } catch (error) {
-      console.log('loi midel', error)
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+
+  async delete(idUser, idComment) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.delete(table, {
+        id_user: idUser,
+        id: idComment,
+      })
+      return response
+    } catch (error) {
       return 'fail'
     } finally {
       qb.release()

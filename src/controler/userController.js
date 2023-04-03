@@ -28,7 +28,11 @@ const addUser = async (req, res) => {
       process.env.PRIVATE_KEY
     ).toString()
 
-    const sendMailResult = await registerMail(email, verifyToken)
+    const sendMailResult = await registerMail(
+      email,
+      verifyToken,
+      req.headers.origin
+    )
     if (sendMailResult == 'fail') {
       return res.json({
         code: 500,
@@ -49,7 +53,7 @@ const addUser = async (req, res) => {
 
 const userRegister = async (req, res) => {
   try {
-    const token = req.params.token
+    const token = req.body.token
     const { name, email, password } = JSON.parse(
       CryptoJS.AES.decrypt(token, process.env.PRIVATE_KEY).toString(
         CryptoJS.enc.Utf8
@@ -57,34 +61,28 @@ const userRegister = async (req, res) => {
     )
     const isExistUser = await User.isExist(email)
     if (isExistUser === 'fail') {
-      return res.send(`
-        <h2>Verify fail</h2>
-        <p>Internal ERROR</p>
-      `)
+      throw new Error('error')
     }
     const [{ count }] = isExistUser
     if (count > 0) {
-      return res.send(`
-      <title>Verify email</title>
-        <h2>Verify fail</h2>
-        <p>You have verified once</p>
-      `)
+      return res.json({
+        code: 300,
+        message: 'existed user',
+      })
     }
     const response = await User.add({ name, email, password })
     if (response == 'fail') {
-      return res.send(`
-      <title>Verify email</title>
-        <h2>Verify fail</h2>
-        <p>Internal ERROR</p>
-      `)
+      throw new Error('error')
     }
-    return res.send(`
-    <title>Verify email</title>
-        <h2>Verify successfully</h2>
-        <p>Wellcome to ${process.env.APP_NAME}</p>
-      `)
+    return res.json({
+      code: 201,
+      message: 'ok',
+    })
   } catch (error) {
-    return res.send('error')
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
   }
 }
 
@@ -193,6 +191,12 @@ const loginToken = async (req, res) => {
       })
     }
     if (Object.keys(response).length > 0) {
+      if (response.status == 1) {
+        return res.json({
+          code: 500,
+          message: 'banned',
+        })
+      }
       const tokenStr = CryptoJS.AES.encrypt(
         JSON.stringify({
           id: response.id,
@@ -307,11 +311,121 @@ const forceUpdateUser = async (req, res) => {
         message: 'INVALID_ACTION',
       })
     }
+    if (type === 'BAN') {
+      global.io.emit(id, 'BAN')
+    }
     return res.json({
       code: 201,
       message: 'ok',
     })
   } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+const changePassword = async (req, res) => {
+  try {
+    const { newPassword, oldPassword } = req.body
+    if (newPassword === oldPassword) {
+      return res.json({
+        code: 402,
+        message: 'same pass',
+      })
+    }
+
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
+
+    const response = await User.get(idUser)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    if (response.length === 0) {
+      return res.json({
+        code: 404,
+        message: 'non exist user',
+      })
+    }
+    const currentPass = CryptoJS.AES.decrypt(
+      response[0].password,
+      process.env.PRIVATE_KEY
+    ).toString(CryptoJS.enc.Utf8)
+    if (currentPass !== oldPassword) {
+      return res.json({ code: 400, message: 'oldPass is wrong' })
+    }
+    const responseChangePass = await User.changePassword(
+      idUser,
+      CryptoJS.AES.encrypt(newPassword, process.env.PRIVATE_KEY).toString()
+    )
+    if (responseChangePass === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 200,
+      message: 'changed',
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const getUserByAdmin = async (req, res) => {
+  try {
+    const idUser = req.params.id
+    if (!idUser) {
+      return res.json({
+        code: 400,
+        message: 'missing params',
+      })
+    }
+
+    const response = await User.get(idUser)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    const user = response[0]
+    delete user.password
+    if (user.avartar_cdn) {
+      user.avartar_cdn = process.env.APP_CDN_URL + user.avartar_cdn
+    }
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: user,
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const changeRole = async (req, res) => {
+  try {
+    const { id, role } = req.body
+    console.log(req.body)
+
+    if (!id || !role) {
+      return res.json({ code: 400, message: 'missing params' })
+    }
+    const response = await User.changeRole(id, role)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+
+    return res.json({ code: 200, message: 'changed' })
+  } catch (error) {
+    console.log(error)
     return res.json({
       code: 500,
       message: 'error',
@@ -328,4 +442,7 @@ module.exports = {
   changeAvatar,
   listUser,
   forceUpdateUser,
+  changePassword,
+  getUserByAdmin,
+  changeRole,
 }

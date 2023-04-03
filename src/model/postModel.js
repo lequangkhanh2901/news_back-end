@@ -6,11 +6,11 @@ const Post = {
     let qb
     try {
       qb = await pool.get_connection()
-      const response = await qb.query(
-        `SELECT *, (SELECT name FROM users WHERE users.id = ${table}.id_author) AS name_author, (SELECT name FROM users WHERE users.id = ${table}.id_censor) AS name_censor FROM ${table} WHERE ${table}.deleted = 0 ORDER BY created_at DESC LIMIT ${postsPerPage} OFFSET ${
-          (page - 1) * postsPerPage
-        }`
-      )
+      let sql = `SELECT *, (SELECT name FROM users WHERE users.id = ${table}.id_author) AS name_author, (SELECT name FROM users WHERE users.id = ${table}.id_censor) AS name_censor FROM ${table} WHERE ${table}.deleted = 0 ORDER BY created_at DESC LIMIT ${postsPerPage} OFFSET ${
+        (page - 1) * postsPerPage
+      }`
+
+      const response = await qb.query(sql)
       return response
     } catch (error) {
       return 'fail'
@@ -41,11 +41,13 @@ const Post = {
       qb.release()
     }
   },
-  async search(searchArr) {
+  async search(searchArr, type) {
     let qb
     try {
       qb = await pool.get_connection()
-      let sql = `SELECT id,title FROM ${table} WHERE `
+
+      const limitPost = 40
+      let sql = `SELECT * FROM ${table} WHERE `
       const searchLen = searchArr.length
       for (let i in searchArr) {
         if (i == searchLen - 1) {
@@ -54,10 +56,18 @@ const Post = {
           sql += `title LIKE '%${searchArr[i]}%' AND `
         }
       }
+      sql += `AND deleted = 0 AND id_censor IS NOT NULL `
+      if (!type) {
+        sql += ` ORDER BY created_at DESC LIMIT ${limitPost}`
+      } else {
+        sql += ` ORDER BY created_at DESC`
+      }
+
       const response = qb.query(sql)
 
       return response
     } catch (error) {
+      console.log(error)
       return 'fail'
     } finally {
       qb.release()
@@ -97,26 +107,10 @@ const Post = {
     let qb
     try {
       qb = await pool.get_connection()
-      const response = await qb
-        .select(
-          // 'id,title,sort_description, avartar_cdn, id_author, viewed, created_at '
-          [
-            table + '.id',
-            table + '.title',
-            table + '.sort_description',
-            table + '.avartar_cdn',
-            table + '.id_author',
-            table + '.viewed',
-            table + '.created_at',
-            'users.name as name_author',
-          ]
-        )
-        .from(table)
-        .where('id_category', id)
-        .join('users', 'users.id=posts.id_author', 'inner')
-        .order_by('created_at', 'DESC')
-        .limit(postsPerPage, (page - 1) * postsPerPage)
-        .get()
+      const sql = `SELECT ${table}.*, users.name AS name_author FROM ${table} INNER JOIN users ON users.id = ${table}.id_author WHERE ${table}.id_category = ${id} AND ${table}.deleted = 0 AND ${table}.id_censor IS NOT NULL ORDER BY ${table}.created_at DESC LIMIT ${postsPerPage} OFFSET ${
+        (page - 1) * postsPerPage
+      }`
+      const response = await qb.query(sql)
       return response
     } catch (error) {
       return 'fail'
@@ -179,7 +173,6 @@ const Post = {
       )
       return response
     } catch (error) {
-      console.log(error)
       return 'fail'
     } finally {
       qb.release()
@@ -202,6 +195,152 @@ const Post = {
     try {
       qb = await pool.get_connection()
       const response = await qb.update(table, { deleted: 1 }, { id })
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async listOfcategoryHome(idCategory) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      let sql = ''
+      for (let i = 0; i < idCategory.length; i++) {
+        if (i === 0) {
+          sql += `(SELECT ${table}.*, categories.name as name_category FROM ${table} INNER JOIN categories ON categories.id = ${table}.id_category WHERE ${table}.id_category = ${idCategory[i]} AND ${table}.deleted = 0 AND ${table}.id_censor IS NOT NULL AND categories.status = 0 ORDER BY ${table}.created_at DESC LIMIT 10 )`
+        } else {
+          sql += ` UNION ALL (SELECT ${table}.*, categories.name as name_category FROM ${table} INNER JOIN categories ON categories.id = ${table}.id_category WHERE ${table}.id_category = ${idCategory[i]} AND ${table}.deleted = 0 AND ${table}.id_censor IS NOT NULL AND categories.status = 0 ORDER BY ${table}.created_at DESC LIMIT 10 )`
+        }
+      }
+      const response = await qb.query(sql)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async trash() {
+    let qb
+    try {
+      qb = await pool.get_connection()
+
+      const response = await qb.query(
+        `SELECT *,(SELECT name from users WHERE posts.id_author = users.id)  AS name_author, (SELECT name FROM users WHERE users.id = posts.id_censor) AS name_censor FROM posts WHERE deleted = 1 ORDER BY created_at DESC`
+      )
+
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async restore(idPost) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.update(
+        table,
+        {
+          deleted: 0,
+        },
+        { id: idPost }
+      )
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async forceDelete(idPost) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.delete(table, {
+        id: idPost,
+      })
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async getSpecial(idUser, role) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      let sql
+      if (role === 1) {
+        sql = `SELECT *, (SELECT name FROM users WHERE users.id = ${table}.id_author) AS name_author, (SELECT name FROM users WHERE users.id = ${table}.id_censor) AS name_censor FROM ${table} WHERE ${table}.id_author = ${idUser} AND ${table}.deleted = 0 ORDER BY created_at DESC `
+      } else if (role === 2) {
+        sql = `SELECT *, (SELECT name FROM users WHERE users.id = ${table}.id_author) AS name_author, (SELECT name FROM users WHERE users.id = ${table}.id_censor) AS name_censor FROM ${table} WHERE ${table}.id_censor IS NULL AND ${table}.deleted = 0 ORDER BY created_at DESC `
+      } else return 'fail'
+
+      const response = await qb.query(sql)
+      return response
+    } catch (error) {
+    } finally {
+      qb.release()
+    }
+  },
+  async deleteUnCensor(idUser, idPost) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const sql = `DELETE FROM ${table} WHERE id = ${idPost} AND id_author = ${idUser} AND id_censor IS NULL`
+      const response = await qb.query(sql)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async getUncensorPost(idUser, idPost) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const sql = `SELECT * FROM ${table} WHERE id = ${idPost} AND id_author = ${idUser} AND id_censor IS NULL`
+      const response = await qb.query(sql)
+      return response
+    } catch (error) {
+      return 'fail'
+    } finally {
+      qb.release()
+    }
+  },
+  async update({
+    id,
+    title,
+    sort_description,
+    id_category,
+    content,
+    avartar_cdn,
+    id_censor,
+    censored_at,
+    updated_at,
+  }) {
+    let qb
+    try {
+      qb = await pool.get_connection()
+      const response = await qb.update(
+        table,
+        {
+          title,
+          sort_description,
+          id_category,
+          content,
+          avartar_cdn,
+          id_censor,
+          censored_at,
+          updated_at,
+        },
+        { id }
+      )
       return response
     } catch (error) {
       return 'fail'

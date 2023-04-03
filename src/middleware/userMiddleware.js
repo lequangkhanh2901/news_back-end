@@ -5,7 +5,9 @@ const checkAdmin = async (req, res, next) => {
   try {
     const { authorization } = req.headers
     const { role } = JSON.parse(
-      CryptoJS.AES.decrypt(authorization, process.env.PRIVATE_KEY).toString(CryptoJS.enc.Utf8)
+      CryptoJS.AES.decrypt(authorization, process.env.PRIVATE_KEY).toString(
+        CryptoJS.enc.Utf8
+      )
     )
     if (role != 0) {
       return res.json({
@@ -43,7 +45,9 @@ const writerMiddleWare = (req, res, next) => {
   try {
     const { authorization } = req.headers
     const { role } = JSON.parse(
-      CryptoJS.AES.decrypt(authorization, process.env.PRIVATE_KEY).toString(CryptoJS.enc.Utf8)
+      CryptoJS.AES.decrypt(authorization, process.env.PRIVATE_KEY).toString(
+        CryptoJS.enc.Utf8
+      )
     )
     if (role != 1) {
       return req.json({
@@ -60,4 +64,32 @@ const writerMiddleWare = (req, res, next) => {
   }
 }
 
-module.exports = { checkAdmin, authMiddleware, writerMiddleWare }
+const censorMiddleware = (req, res, next) => {
+  try {
+    const { authorization } = req.headers
+    const { role } = JSON.parse(
+      CryptoJS.AES.decrypt(authorization, process.env.PRIVATE_KEY).toString(
+        CryptoJS.enc.Utf8
+      )
+    )
+    if (role != 2) {
+      return req.json({
+        code: 404,
+        message: 'permision denied',
+      })
+    }
+    next()
+  } catch (error) {
+    return res.json({
+      code: 405,
+      message: 'error',
+    })
+  }
+}
+
+module.exports = {
+  checkAdmin,
+  authMiddleware,
+  writerMiddleWare,
+  censorMiddleware,
+}

@@ -1,4 +1,6 @@
 const CryptoJS = require('crypto-js')
+const fs = require('fs')
+
 const {
   titlePost,
   listIdCategory,
@@ -9,6 +11,7 @@ const {
   contentPost,
 } = require('../fakeData/post')
 const LikePostModel = require('../model/likePostModel')
+const Category = require('../model/categoryModel')
 const Post = require('../model/postModel')
 
 const getPosts = async (req, res) => {
@@ -39,6 +42,7 @@ const getPosts = async (req, res) => {
   }
 }
 const getPost = async (req, res) => {
+  console.log(req.headers.origin)
   const { id } = req.params
   const authorization = req.headers.authorization
   let idUser = undefined
@@ -59,38 +63,55 @@ const getPost = async (req, res) => {
         LikePostModel.getNum(id),
         LikePostModel.isLikeByUser(idUser, id),
       ])
-      postContent.num_like = num_like
-      postContent.viewed = postContent.viewed + 1
-      delete postContent.id_censor
-      delete postContent.censored_at
-      delete postContent.deleted
-      postContent.avartar_cdn =
-        process.env.APP_CDN_URL + postContent.avartar_cdn
-      postContent.isLikeByUser = isLikeByUser.length == 1
-      Post.updateViewed(id, postContent.viewed)
-      return res.json({
-        code: 200,
-        message: 'ok',
-        data: postContent,
-      })
+      if (postContent !== 'fail') {
+        if (postContent == undefined) {
+          return res.json({ code: 200, message: 'ok', data: {} })
+        }
+        postContent.num_like = num_like
+        postContent.viewed = postContent.viewed + 1
+        delete postContent.id_censor
+        delete postContent.censored_at
+        delete postContent.deleted
+        postContent.avartar_cdn =
+          process.env.APP_CDN_URL + postContent.avartar_cdn
+        postContent.isLikeByUser = isLikeByUser.length == 1
+        Post.updateViewed(id, postContent.viewed)
+        return res.json({
+          code: 200,
+          message: 'ok',
+          data: postContent,
+        })
+      } else {
+        return res.json({
+          code: 500,
+          message: 'error',
+        })
+      }
     } else {
       const [postContent, num_like] = await Promise.all([
         Post.get(id),
         LikePostModel.getNum(id),
       ])
-      postContent.num_like = num_like
-      postContent.viewed = postContent.viewed + 1
-      delete postContent.id_censor
-      delete postContent.censored_at
-      delete postContent.deleted
-      postContent.avartar_cdn =
-        process.env.APP_CDN_URL + postContent.avartar_cdn
-      Post.updateViewed(id, postContent.viewed)
-      return res.json({
-        code: 200,
-        message: 'ok',
-        data: postContent,
-      })
+      if (postContent !== 'fail') {
+        if (postContent == undefined) {
+          return res.json({ code: 200, message: 'ok', data: {} })
+        }
+        postContent.num_like = num_like
+        postContent.viewed = postContent.viewed + 1
+        delete postContent.id_censor
+        delete postContent.censored_at
+        delete postContent.deleted
+        postContent.avartar_cdn =
+          process.env.APP_CDN_URL + postContent.avartar_cdn
+        Post.updateViewed(id, postContent.viewed)
+        return res.json({
+          code: 200,
+          message: 'ok',
+          data: postContent,
+        })
+      } else {
+        return res.json({ code: 500, message: 'error' })
+      }
     }
 
     //LikePostModel.getNum(id)
@@ -195,11 +216,21 @@ const add = async (req, res) => {
 }
 const hanleUploadAvartar = async (req, res) => {
   try {
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
     const response = await Post.add({
       ...req.body,
       avartar_cdn: '/images/avartarPost/' + req.file.filename,
-      id_author: 1 /* get key from token*/,
+      id_author: idUser /* get key from token*/,
     })
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+
     return res.json({
       code: 201,
       message: 'ok',
@@ -364,6 +395,312 @@ const likePost = async (req, res) => {
   }
 }
 
+const getHomePosts = async (req, res) => {
+  try {
+    const idCategory = []
+    const response = await Category.list()
+    if (response === 'fail') {
+      return res.json({
+        code: 500,
+        message: 'error',
+      })
+    }
+    response.forEach((category) => {
+      idCategory.push(category.id)
+    })
+
+    const postsResponse = await Post.listOfcategoryHome(idCategory)
+    if (postsResponse === 'fail') {
+      return res.json({
+        code: 500,
+        message: 'error',
+      })
+    }
+    postsResponse.forEach((post) => {
+      post.avartar_cdn = process.env.APP_CDN_URL + post.avartar_cdn
+    })
+
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: postsResponse,
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const getTrashPost = async (req, res) => {
+  try {
+    if (req.params.page) {
+      currentPage = req.params.page
+    }
+    const response = await Post.trash()
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: response,
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const restorePost = async (req, res) => {
+  try {
+    const { idPost } = req.body
+
+    if (!idPost) {
+      return req.json({
+        code: 400,
+        message: 'missing params',
+      })
+    }
+
+    const response = await Post.restore(idPost)
+
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 202,
+      message: 'restored',
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+const forceDeletePost = async (req, res) => {
+  try {
+    const idPost = req.body.idPost
+    if (!idPost) {
+      return res.json({
+        code: 400,
+        message: 'missing parans',
+      })
+    }
+    const response = await Post.forceDelete(idPost)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 200,
+      message: 'deleted',
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const getPostsSpecial = async (req, res) => {
+  try {
+    const { id, role } = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    )
+
+    const response = await Post.getSpecial(id, role)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: response,
+    })
+  } catch (error) {
+    return res.json({
+      code: 50,
+      message: 'error',
+    })
+  }
+}
+
+const deleteUnCensorPost = async (req, res) => {
+  try {
+    const idPost = req.body.id
+    if (!idPost) {
+      return res.json({
+        code: 400,
+        message: 'missing params',
+      })
+    }
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
+
+    const response = await Post.deleteUnCensor(idUser, idPost)
+    if (response === 'fail') {
+      return res.json({ code: 500, message: 'error' })
+    }
+
+    return res.json({ code: 200, message: 'deleted' })
+  } catch (error) {
+    return res.json({ code: 500, message: 'error' })
+  }
+}
+
+const getUncensorPost = async (req, res) => {
+  try {
+    const idPost = req.params.id
+    if (!idPost) {
+      return res.json({ code: 400, message: 'missing params' })
+    }
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
+
+    const response = await Post.getUncensorPost(idUser, idPost)
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    if (response.length === 0) {
+      return res.json({
+        code: 501,
+        message: 'data is null',
+      })
+    }
+    response[0].avartar_cdn = process.env.APP_CDN_URL + response[0].avartar_cdn
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: response[0],
+    })
+  } catch (error) {
+    return res.json({ code: 500, message: ' error' })
+  }
+}
+
+const updatePost = async (req, res) => {
+  try {
+    const { id, title, sort_desc, category, prev_avartar_cdn, content } =
+      req.body
+
+    const response = await Post.update({
+      id,
+      title,
+      id_category: category,
+      sort_description: sort_desc,
+      avartar_cdn: req.file
+        ? '/images/avartarPost/' + req.file.filename
+        : undefined,
+      updated_at: Date.now(),
+      content,
+    })
+    if (response !== 'fail') {
+      if (req.file) {
+        try {
+          fs.unlink(
+            __dirname.replace('controler', 'public') +
+              prev_avartar_cdn.replace(process.env.APP_CDN_URL, '')
+          )
+        } catch {}
+      }
+      return res.json({
+        code: 201,
+        message: 'updated',
+      })
+    }
+    throw new Error('error')
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const censorPost = async (req, res) => {
+  try {
+    const idPost = req.body.id
+    if (!idPost) {
+      return res.json({
+        code: 400,
+        message: 'missing params',
+      })
+    }
+    const idUser = JSON.parse(
+      CryptoJS.AES.decrypt(
+        req.headers.authorization,
+        process.env.PRIVATE_KEY
+      ).toString(CryptoJS.enc.Utf8)
+    ).id
+    const response = await Post.update({
+      id: idPost,
+      id_censor: idUser,
+      censored_at: Date.now(),
+    })
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    return res.json({
+      code: 202,
+      message: 'censored',
+    })
+  } catch (error) {
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
+const getSearchAll = async (req, res) => {
+  try {
+    const { data } = req.params
+    if (!data.trim()) {
+      return res.json({
+        code: 400,
+        message: 'missing params',
+      })
+    }
+    const searchArr = data.trim().split(' ')
+
+    const response = await Post.search(searchArr, 'all')
+
+    if (response === 'fail') {
+      throw new Error('error')
+    }
+    response.forEach((post) => {
+      post.avartar_cdn = process.env.APP_CDN_URL + post.avartar_cdn
+    })
+    return res.json({
+      code: 200,
+      message: 'ok',
+      data: response,
+    })
+  } catch (error) {
+    console.log(error)
+    return res.json({
+      code: 500,
+      message: 'error',
+    })
+  }
+}
+
 module.exports = {
   getPosts,
   getPost,
@@ -375,5 +712,15 @@ module.exports = {
   generatepost,
   deletePost,
   likePost,
+  getHomePosts,
+  getTrashPost,
+  restorePost,
+  forceDeletePost,
+  getPostsSpecial,
+  deleteUnCensorPost,
+  getUncensorPost,
+  updatePost,
+  censorPost,
+  getSearchAll,
 }
 /////// data to generate post

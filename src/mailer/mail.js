@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer')
 
-const registerMail = async (email, data) => {
+const registerMail = async (email, data, link) => {
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -22,7 +22,7 @@ const registerMail = async (email, data) => {
       <body>
         <h2>Wellcome to ${process.env.APP_NAME}</h2>
         <p>We received an <b>Signup</b> action using this email</p>
-        <p>If that are you, <a href="http://${process.env.APP_URL}user/user-register/${encodeURIComponent(
+        <p>If that are you, <a href="${link}/user-register/${encodeURIComponent(
       data
     )}"> <b>Verify</b> </a></p>
 

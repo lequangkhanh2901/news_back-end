@@ -5,6 +5,8 @@ const path = require('path')
 const bodyParser = require('body-parser')
 const cors = require('cors')
 const multiparty = require('connect-multiparty')
+const http = require('http')
+const { Server } = require('socket.io')
 
 const postRoutes = require('./routes/postRoutes')
 const categoryRoutes = require('./routes/categoryRoutes')
@@ -47,6 +49,22 @@ const MultipartyAvartarPostMiddleware = multiparty({
 })
 
 const app = express()
+
+const io = new Server(4100, {
+  cors: {
+    origin: process.env.FRONTEND_URL,
+  },
+})
+
+global.io = io
+
+io.on('connection', (socket) => {
+  console.log('connection')
+  socket.on('test', (test) => {
+    console.log(test)
+  })
+})
+
 app.use(bodyParser.urlencoded({ extended: true })) // body-paser
 app.use(bodyParser.json())
 app.use(cors())
@@ -54,6 +72,12 @@ app.use(cors())
 const port = process.env.PORT
 
 app.get('/', (req, res) => {
+  // console.log(
+  //   CryptoJS.AES.decrypt(
+  //     'U2FsdGVkX1+Iog+sOPLeCj2VHVag2qAKKX1Ui/btMDI=',
+  //     process.env.PRIVATE_KEY
+  //   ).toString(CryptoJS.enc.Utf8)
+  // )
   return res.send('hi')
 })
 app.post('/api/upload', MultipartyMiddleware, (req, res) => {

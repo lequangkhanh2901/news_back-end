@@ -11,6 +11,9 @@ const {
   changeAvatar,
   listUser,
   forceUpdateUser,
+  changePassword,
+  getUserByAdmin,
+  changeRole,
 } = require('../controler/userController')
 const { userValidator } = require('../middleware/validator')
 const { authMiddleware, checkAdmin } = require('../middleware/userMiddleware')
@@ -33,24 +36,32 @@ const storage = multer.diskStorage({
 })
 
 const upload = multer({ storage, limits: { fileSize: 500000 } })
-// const MultipartyChangeAvatarUserMiddleware = multiparty({ uploadDir: __dirname + '/public/images/avartarUser' })
 
 let router = express.Router()
 
 const userRoutes = (app) => {
   router.get('/list', authMiddleware, checkAdmin, listUser)
+  router.post('/register', userRegister)
   router.post('/', userValidator.signUp, addUser)
-  router.patch('/', userValidator.update, authMiddleware, updateUser)
+  router.patch(
+    '/change-password',
+    authMiddleware,
+    userValidator.changPassword,
+    changePassword
+  )
+  router.patch('/', authMiddleware, userValidator.update, updateUser)
   router.post('/login', userValidator.login, login)
   router.post('/login-token', authMiddleware, loginToken)
   router.patch('/force', authMiddleware, checkAdmin, forceUpdateUser)
+  router.patch('/change-role', authMiddleware, checkAdmin, changeRole)
   router.post(
     '/change-avartar',
     authMiddleware,
     upload.single('file'),
     changeAvatar
   )
-  router.get('/user-register/:token', userRegister)
+
+  router.get('/by-amdin/:id', authMiddleware, checkAdmin, getUserByAdmin)
 
   return app.use('/api/user', router)
 }
